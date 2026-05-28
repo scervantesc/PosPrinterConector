@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.github.anastaciocintra</groupId>
+  <artifactId>escpos-coffee</artifactId>
+  <version>4.1.0</version>
+  <name>escpos-coffee</name>
+  <description>Java library for ESC/POS printer commands. Can send text, images and barcodes to the printer.
+        All commands are send to one OutputStream, than you can redirect to printer, file or network.</description>
+  <url>https://github.com/anastaciocintra/escpos-coffee</url>
+  <organization>
+    <name>github.com/anastaciocintra</name>
+    <url>https://github.com/anastaciocintra</url>
+  </organization>
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://github.com/anastaciocintra/escpos-coffee/blob/master/LICENSE</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <name>Marco Antonio Anastacio Cintra</name>
+      <email>anastaciocintra@gmail.com</email>
+      <url>https://github.com/anastaciocintra</url>
+      <roles>
+        <role>Lead Developer</role>
+      </roles>
+    </developer>
+    <developer>
+      <name>Derick Felix</name>
+      <url>https://github.com/derickfelix</url>
+      <roles>
+        <role>developer</role>
+      </roles>
+    </developer>
+    <developer>
+      <name>Muraveiko Oleg U.</name>
+      <url>https://github.com/Muraveiko</url>
+      <roles>
+        <role>developer</role>
+      </roles>
+    </developer>
+    <developer>
+      <name>papuscoder</name>
+      <url>https://github.com/papuscoder</url>
+      <roles>
+        <role>developer</role>
+      </roles>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:git://github.com/anastaciocintra/escpos-coffee.git</connection>
+    <developerConnection>scm:git:ssh://git@//github.com/anastaciocintra/escpos-coffee.git</developerConnection>
+    <url>https://github.com/anastaciocintra/escpos-coffee</url>
+  </scm>
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/anastaciocintra/escpos-coffee/issues</url>
+  </issueManagement>
+  <distributionManagement>
+    <repository>
+      <id>ossrh-staging</id>
+      <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>
+    </repository>
+    <snapshotRepository>
+      <id>ossrh-snapshots</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+    </snapshotRepository>
+  </distributionManagement>
+  <properties>
+    <maven-source.version>3.1.0</maven-source.version>
+    <maven-assembly.version>3.1.1</maven-assembly.version>
+    <maven-surefire.version>2.21.0</maven-surefire.version>
+    <maven-deploy.version>2.8.2</maven-deploy.version>
+    <enforcer.version>3.0.0-M2</enforcer.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven-site.version>3.8.2</maven-site.version>
+    <maven-gpg.version>1.6</maven-gpg.version>
+    <junit-platform-surefire-provider.version>1.2.0-M1</junit-platform-surefire-provider.version>
+    <flatten.version>1.1.0</flatten.version>
+    <java.version>1.8</java.version>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven-jar.version>3.1.2</maven-jar.version>
+    <revision>4.1.0</revision>
+    <junit-jupiter-api.version>5.5.2</junit-jupiter-api.version>
+    <maven.compiler.target>1.8</maven.compiler.target>
+    <junit-jupiter-engine.version>5.2.0-M1</junit-jupiter-engine.version>
+    <maven-install.version>3.0.0-M1</maven-install.version>
+  </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter-api</artifactId>
+        <version>${junit-jupiter-api.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>

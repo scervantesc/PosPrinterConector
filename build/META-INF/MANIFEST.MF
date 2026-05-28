@@ -1,0 +1,14 @@
+Manifest-Version: 1.0
+Created-By: Maven Archiver 3.4.0
+Build-Jdk-Spec: 11
+Build-Tool: Apache Maven 3.6.3 (cecedd343002696d0abb50b32b541b8a6ba2883f
+ )
+Build-Jdk: 11.0.11 (Ubuntu)
+Build-Os: Linux (5.4.0-74-generic; amd64)
+Specification-Title: escpos-coffee
+Specification-Version: 4.1
+Specification-Vendor: github.com/anastaciocintra
+Implementation-Title: escpos-coffee
+Implementation-Version: 4.1.0
+Implementation-Vendor: github.com/anastaciocintra
+
