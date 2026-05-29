@@ -12,9 +12,6 @@ import java.awt.BorderLayout;
 import java.awt.Desktop;
 import java.awt.FlowLayout;
 import java.awt.GraphicsEnvironment;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.MenuItem;
 import java.awt.PopupMenu;
@@ -48,11 +45,6 @@ import javax.print.SimpleDoc;
 import javax.print.attribute.PrintServiceAttributeSet;
 import javax.print.attribute.standard.PrinterIsAcceptingJobs;
 import javax.print.attribute.standard.QueuedJobCount;
-import java.awt.print.PageFormat;
-import java.awt.print.Paper;
-import java.awt.print.Printable;
-import java.awt.print.PrinterException;
-import java.awt.print.PrinterJob;
 import javax.swing.JCheckBox;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
@@ -65,8 +57,9 @@ import javax.swing.SwingUtilities;
 public class Main {
     private static final String HOST = "127.0.0.1";
     private static final int PORT = 5001;
-    private static final Path SELECTED_PRINTER_FILE = Paths.get("selected-printer.txt");
-    private static final Path SETTINGS_FILE = Paths.get("settings.properties");
+    private static final Path APP_DATA_DIR = resolveAppDataDir();
+    private static final Path SELECTED_PRINTER_FILE = APP_DATA_DIR.resolve("selected-printer.txt");
+    private static final Path SETTINGS_FILE = APP_DATA_DIR.resolve("settings.properties");
     private static final AtomicReference<String> selectedPrinter = new AtomicReference<>(loadSelectedPrinter());
     private static final AtomicReference<Settings> settingsRef = new AtomicReference<>(loadSettings());
     private static HttpServer server;
@@ -135,6 +128,20 @@ public class Main {
         selectedPrinter.set(name);
         saveSelectedPrinter(name);
         refreshTrayStatus();
+    }
+
+    private static Path resolveAppDataDir() {
+        String appData = System.getenv("APPDATA");
+        Path base = (appData == null || appData.isBlank()) ? Paths.get(System.getProperty("user.home")) : Paths.get(appData);
+        return base.resolve("TicketPrinter");
+    }
+
+    private static void ensureAppDataDir() {
+        try {
+            Files.createDirectories(APP_DATA_DIR);
+        } catch (IOException e) {
+            throw new RuntimeException("No se pudo crear directorio de configuracion: " + APP_DATA_DIR, e);
+        }
     }
 
     private static void installSystemTray() throws AWTException {
@@ -449,6 +456,7 @@ public class Main {
     }
 
     private static Settings loadSettings() {
+        ensureAppDataDir();
         Settings settings = new Settings();
         settings.startServiceOnLaunch = true;
         settings.startWithWindows = false;
@@ -468,6 +476,7 @@ public class Main {
 
     private static void saveSettings(Settings settings) {
         try {
+            ensureAppDataDir();
             Properties p = new Properties();
             p.setProperty("startServiceOnLaunch", String.valueOf(settings.startServiceOnLaunch));
             p.setProperty("startWithWindows", String.valueOf(settings.startWithWindows));
@@ -494,13 +503,40 @@ public class Main {
             return;
         }
 
-        String javaw = Paths.get(System.getProperty("java.home"), "bin", "javaw.exe").toString();
-        String classPath = System.getProperty("java.class.path");
-        String jarPath = classPath.split(";")[0];
-        Path resolvedJar = Paths.get(jarPath).toAbsolutePath().normalize();
-        String script = "@echo off\r\n" +
-            "start \"\" \"" + javaw + "\" -jar \"" + resolvedJar + "\"\r\n";
+        Path launchTarget = resolveLaunchTarget();
+        String script;
+        if (launchTarget.toString().toLowerCase(Locale.ROOT).endsWith(".exe")) {
+            script = "@echo off\r\n" +
+                "start \"\" \"" + launchTarget + "\"\r\n";
+        } else {
+            String javaw = Paths.get(System.getProperty("java.home"), "bin", "javaw.exe").toString();
+            script = "@echo off\r\n" +
+                "start \"\" \"" + javaw + "\" -jar \"" + launchTarget + "\"\r\n";
+        }
         Files.writeString(cmdPath, script, StandardCharsets.UTF_8);
+    }
+
+    private static Path resolveLaunchTarget() throws IOException {
+        String command = ProcessHandle.current().info().command().orElse("").trim();
+        if (!command.isBlank()) {
+            Path cmdPath = Paths.get(command);
+            if (Files.exists(cmdPath) && command.toLowerCase(Locale.ROOT).endsWith(".exe")
+                && !command.toLowerCase(Locale.ROOT).endsWith("java.exe")
+                && !command.toLowerCase(Locale.ROOT).endsWith("javaw.exe")) {
+                return cmdPath.toAbsolutePath().normalize();
+            }
+        }
+        String classPath = System.getProperty("java.class.path", "");
+        if (!classPath.isBlank()) {
+            String first = classPath.split(";")[0].trim();
+            if (!first.isBlank()) {
+                Path jarPath = Paths.get(first);
+                if (Files.exists(jarPath)) {
+                    return jarPath.toAbsolutePath().normalize();
+                }
+            }
+        }
+        throw new IOException("No se pudo resolver ruta de arranque para inicio con Windows.");
     }
 
     static class Settings {
@@ -520,6 +556,7 @@ public class Main {
 
     private static void saveSelectedPrinter(String name) {
         try {
+            ensureAppDataDir();
             Files.writeString(SELECTED_PRINTER_FILE, name, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new RuntimeException("No se pudo guardar la impresora seleccionada", e);
