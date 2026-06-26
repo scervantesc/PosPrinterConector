@@ -20,6 +20,7 @@ import java.awt.TrayIcon;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -53,6 +54,7 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import javax.swing.JTextField;
 
 public class Main {
     private static final String HOST = "127.0.0.1";
@@ -105,6 +107,8 @@ public class Main {
         server.createContext("/printers", new PrintersHandler());
         server.createContext("/printer/select", new SelectPrinterHandler());
         server.createContext("/queue", new QueueHandler());
+        server.createContext("/label/brother/config", new BrotherLabelConfigHandler());
+        server.createContext("/label/brother", new BrotherLabelHandler());
         server.createContext("/printer", new PrintTicketHandler());
         server.setExecutor(null);
         server.start();
@@ -311,16 +315,22 @@ public class Main {
     private static void showDesktopUi() {
         JFrame frame = new JFrame("Ticket Printer ESC/POS");
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        frame.setSize(620, 240);
+        frame.setSize(720, 340);
         frame.setLocationRelativeTo(null);
 
         JLabel endpointLabel = new JLabel("Endpoint: http://" + HOST + ":" + PORT + "/printer");
         JLabel statusLabel = new JLabel("Servicio HTTP: " + (isServerRunning() ? "ACTIVO" : "DETENIDO"));
         JLabel selectedLabel = new JLabel("Impresora seleccionada: " + selectedPrinter.get());
         JComboBox<String> printersCombo = new JComboBox<>();
+        JLabel labelPrinterLabel = new JLabel("Impresora de etiquetas: " + asString(settingsRef.get().labelPrinterName, ""));
+        JComboBox<String> labelPrintersCombo = new JComboBox<>();
+        JTextField labelTemplateDirField = new JTextField(asString(settingsRef.get().labelTemplateDir, defaultLabelTemplateDir().toString()));
 
         JButton refreshButton = new JButton("Actualizar impresoras");
-        refreshButton.addActionListener(e -> loadPrintersIntoCombo(printersCombo));
+        refreshButton.addActionListener(e -> {
+            loadPrintersIntoCombo(printersCombo);
+            loadLabelPrintersIntoCombo(labelPrintersCombo);
+        });
 
         JButton saveButton = new JButton("Guardar seleccion");
         saveButton.addActionListener(e -> {
@@ -367,13 +377,46 @@ public class Main {
             }
         });
 
+        JButton saveLabelButton = new JButton("Guardar etiquetas");
+        saveLabelButton.addActionListener(e -> {
+            Object item = labelPrintersCombo.getSelectedItem();
+            if (item == null) {
+                JOptionPane.showMessageDialog(frame, "No hay impresora de etiquetas seleccionada.");
+                return;
+            }
+            String name = String.valueOf(item);
+            PrintService printer = findPrinterByName(name);
+            if (printer == null) {
+                JOptionPane.showMessageDialog(frame, "La impresora de etiquetas ya no existe.");
+                return;
+            }
+            Path templateDir = Paths.get(labelTemplateDirField.getText().trim()).toAbsolutePath().normalize();
+            if (!Files.isDirectory(templateDir)) {
+                JOptionPane.showMessageDialog(frame, "No existe la carpeta de plantillas: " + templateDir);
+                return;
+            }
+            Settings s = settingsRef.get();
+            s.labelPrinterName = printer.getName();
+            s.labelTemplateDir = templateDir.toString();
+            saveSettings(s);
+            labelPrinterLabel.setText("Impresora de etiquetas: " + printer.getName());
+            JOptionPane.showMessageDialog(frame, "Configuracion de etiquetas guardada.");
+        });
+
         JPanel top = new JPanel(new BorderLayout());
         top.add(endpointLabel, BorderLayout.NORTH);
         top.add(statusLabel, BorderLayout.SOUTH);
 
         JPanel center = new JPanel(new BorderLayout());
-        center.add(printersCombo, BorderLayout.NORTH);
-        center.add(selectedLabel, BorderLayout.SOUTH);
+        JPanel ticketPanel = new JPanel(new BorderLayout());
+        ticketPanel.add(printersCombo, BorderLayout.NORTH);
+        ticketPanel.add(selectedLabel, BorderLayout.SOUTH);
+        JPanel labelPanel = new JPanel(new BorderLayout());
+        labelPanel.add(labelPrintersCombo, BorderLayout.NORTH);
+        labelPanel.add(labelTemplateDirField, BorderLayout.CENTER);
+        labelPanel.add(labelPrinterLabel, BorderLayout.SOUTH);
+        center.add(ticketPanel, BorderLayout.NORTH);
+        center.add(labelPanel, BorderLayout.CENTER);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT));
         buttons.add(refreshButton);
@@ -381,6 +424,7 @@ public class Main {
         buttons.add(openWebButton);
         buttons.add(startButton);
         buttons.add(stopButton);
+        buttons.add(saveLabelButton);
 
         frame.setLayout(new BorderLayout());
         frame.add(top, BorderLayout.NORTH);
@@ -388,6 +432,7 @@ public class Main {
         frame.add(buttons, BorderLayout.SOUTH);
 
         loadPrintersIntoCombo(printersCombo);
+        loadLabelPrintersIntoCombo(labelPrintersCombo);
         frame.setVisible(true);
     }
 
@@ -398,6 +443,17 @@ public class Main {
         }
         String selected = selectedPrinter.get();
         if (selected != null && !selected.isBlank()) {
+            combo.setSelectedItem(selected);
+        }
+    }
+
+    private static void loadLabelPrintersIntoCombo(JComboBox<String> combo) {
+        combo.removeAllItems();
+        for (String name : listPrinterNames()) {
+            combo.addItem(name);
+        }
+        String selected = asString(settingsRef.get().labelPrinterName, "");
+        if (!selected.isBlank()) {
             combo.setSelectedItem(selected);
         }
     }
@@ -460,6 +516,8 @@ public class Main {
         Settings settings = new Settings();
         settings.startServiceOnLaunch = true;
         settings.startWithWindows = false;
+        settings.labelPrinterName = "";
+        settings.labelTemplateDir = defaultLabelTemplateDir().toString();
         if (!Files.exists(SETTINGS_FILE)) {
             return settings;
         }
@@ -468,6 +526,8 @@ public class Main {
             p.load(Files.newBufferedReader(SETTINGS_FILE, StandardCharsets.UTF_8));
             settings.startServiceOnLaunch = Boolean.parseBoolean(p.getProperty("startServiceOnLaunch", "true"));
             settings.startWithWindows = Boolean.parseBoolean(p.getProperty("startWithWindows", "false"));
+            settings.labelPrinterName = p.getProperty("labelPrinterName", "");
+            settings.labelTemplateDir = p.getProperty("labelTemplateDir", defaultLabelTemplateDir().toString());
             return settings;
         } catch (IOException e) {
             return settings;
@@ -480,6 +540,8 @@ public class Main {
             Properties p = new Properties();
             p.setProperty("startServiceOnLaunch", String.valueOf(settings.startServiceOnLaunch));
             p.setProperty("startWithWindows", String.valueOf(settings.startWithWindows));
+            p.setProperty("labelPrinterName", asString(settings.labelPrinterName, ""));
+            p.setProperty("labelTemplateDir", asString(settings.labelTemplateDir, defaultLabelTemplateDir().toString()));
             try (OutputStream os = Files.newOutputStream(SETTINGS_FILE)) {
                 p.store(os, "Ticket Printer settings");
             }
@@ -542,6 +604,201 @@ public class Main {
     static class Settings {
         boolean startServiceOnLaunch;
         boolean startWithWindows;
+        String labelPrinterName;
+        String labelTemplateDir;
+    }
+
+    private static Map<String, Object> printBrotherBpacLabel(Map<String, Object> payload) throws Exception {
+        Path templatePath = resolveBrotherTemplatePath(payload);
+        if (!Files.exists(templatePath)) {
+            throw new IllegalArgumentException("No existe la plantilla Brother: " + templatePath);
+        }
+
+        String printerName = asString(payload.get("printerName"), "").trim();
+        if (printerName.isBlank()) {
+            printerName = asString(settingsRef.get().labelPrinterName, "").trim();
+        }
+        if (printerName == null || printerName.isBlank()) {
+            throw new IllegalArgumentException("Falta 'printerName' o configura la impresora de etiquetas en /label/brother/config.");
+        }
+        if (findPrinterByName(printerName) == null) {
+            throw new IllegalArgumentException("Impresora de etiquetas no encontrada: " + printerName);
+        }
+
+        Object fieldsObject = payload.get("fields");
+        if (fieldsObject == null) {
+            fieldsObject = payload.get("objects");
+        }
+        if (!(fieldsObject instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException("Falta 'fields' como objeto { \"NombreObjeto\": \"valor\" }.");
+        }
+
+        int copies = asInt(payload.get("copies"), 1);
+        if (copies < 1) {
+            throw new IllegalArgumentException("'copies' debe ser mayor o igual a 1.");
+        }
+
+        boolean ignoreMissingObjects = asBoolean(payload.get("ignoreMissingObjects"), false);
+        Map<String, Object> command = new LinkedHashMap<>();
+        command.put("templatePath", templatePath.toAbsolutePath().normalize().toString());
+        command.put("printerName", printerName);
+        command.put("copies", copies);
+        command.put("ignoreMissingObjects", ignoreMissingObjects);
+        command.put("fields", fieldsObject);
+
+        ensureAppDataDir();
+        Path scriptPath = ensureBrotherBpacScript();
+        Path inputPath = Files.createTempFile(APP_DATA_DIR, "brother-label-", ".json");
+        try {
+            Files.writeString(inputPath, Json.stringify(command), StandardCharsets.UTF_8);
+            ProcessBuilder pb = new ProcessBuilder(
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                scriptPath.toString(),
+                "-InputJsonPath",
+                inputPath.toString()
+            );
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            String stdout;
+            try (InputStream out = process.getInputStream()) {
+                stdout = new String(out.readAllBytes(), StandardCharsets.UTF_8).trim();
+            }
+            int exit = process.waitFor();
+            if (exit != 0) {
+                throw new IllegalStateException(stdout.isBlank() ? "Error ejecutando Brother b-PAC." : stdout);
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("printer", printerName);
+            result.put("templatePath", command.get("templatePath"));
+            result.put("templateName", templatePath.getFileName().toString());
+            result.put("copies", copies);
+            result.put("sdk", "Brother b-PAC");
+            result.put("output", stdout);
+            return result;
+        } finally {
+            try {
+                Files.deleteIfExists(inputPath);
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    private static Path resolveBrotherTemplatePath(Map<String, Object> payload) {
+        String templatePath = asString(payload.get("templatePath"), "").trim();
+        if (!templatePath.isBlank()) {
+            return Paths.get(templatePath).toAbsolutePath().normalize();
+        }
+
+        String templateName = asString(payload.get("templateName"), "").trim();
+        if (templateName.isBlank()) {
+            templateName = asString(payload.get("template"), "").trim();
+        }
+        if (templateName.isBlank()) {
+            throw new IllegalArgumentException("Falta 'templateName' o 'templatePath' para la etiqueta Brother.");
+        }
+        if (!templateName.toLowerCase(Locale.ROOT).endsWith(".lbx")) {
+            templateName = templateName + ".lbx";
+        }
+        Path base = Paths.get(asString(settingsRef.get().labelTemplateDir, defaultLabelTemplateDir().toString()));
+        Path resolved = base.resolve(templateName).normalize();
+        if (!resolved.toAbsolutePath().startsWith(base.toAbsolutePath().normalize())) {
+            throw new IllegalArgumentException("Nombre de plantilla invalido.");
+        }
+        return resolved;
+    }
+
+    private static Path defaultLabelTemplateDir() {
+        Path common = Paths.get("C:\\Etiquetas");
+        return Files.exists(common) ? common : APP_DATA_DIR.resolve("templates");
+    }
+
+    private static List<String> listBrotherTemplateNames() {
+        List<String> names = new ArrayList<>();
+        Path dir = Paths.get(asString(settingsRef.get().labelTemplateDir, defaultLabelTemplateDir().toString()));
+        if (!Files.isDirectory(dir)) {
+            return names;
+        }
+        try (var stream = Files.list(dir)) {
+            stream
+                .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".lbx"))
+                .forEach(p -> names.add(p.getFileName().toString()));
+        } catch (IOException ignored) {
+        }
+        return names;
+    }
+
+    private static Path ensureBrotherBpacScript() throws IOException {
+        ensureAppDataDir();
+        Path scriptPath = APP_DATA_DIR.resolve("brother-bpac-print.ps1");
+        Files.writeString(scriptPath, brotherBpacScript(), StandardCharsets.UTF_8);
+        return scriptPath;
+    }
+
+    private static String brotherBpacScript() {
+        return """
+param(
+    [Parameter(Mandatory = $true)]
+    [string] $InputJsonPath
+)
+
+$ErrorActionPreference = 'Stop'
+$payload = Get-Content -Raw -Encoding UTF8 $InputJsonPath | ConvertFrom-Json
+
+if (-not $payload.templatePath) {
+    throw 'Falta templatePath.'
+}
+if (-not (Test-Path -LiteralPath $payload.templatePath)) {
+    throw "No existe la plantilla: $($payload.templatePath)"
+}
+if (-not $payload.fields) {
+    throw 'Falta fields.'
+}
+
+$doc = New-Object -ComObject bpac.Document
+try {
+    if (-not $doc.Open($payload.templatePath)) {
+        throw "Brother b-PAC no pudo abrir la plantilla: $($payload.templatePath)"
+    }
+
+    if ($payload.printerName) {
+        if (-not $doc.SetPrinter($payload.printerName, $true)) {
+            throw "Brother b-PAC no pudo seleccionar la impresora: $($payload.printerName)"
+        }
+    }
+
+    foreach ($property in $payload.fields.PSObject.Properties) {
+        $object = $doc.GetObject($property.Name)
+        if ($null -eq $object) {
+            if ($payload.ignoreMissingObjects) {
+                continue
+            }
+            throw "La plantilla no contiene el objeto: $($property.Name)"
+        }
+        $object.Text = [string] $property.Value
+    }
+
+    $copies = 1
+    if ($payload.copies) {
+        $copies = [int] $payload.copies
+    }
+
+    $doc.StartPrint('', 0) | Out-Null
+    $doc.PrintOut($copies, 0) | Out-Null
+    $doc.EndPrint() | Out-Null
+    Write-Output "OK"
+}
+finally {
+    if ($null -ne $doc) {
+        try { $doc.Close() | Out-Null } catch {}
+        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($doc)
+    }
+}
+""";
     }
 
     private static String loadSelectedPrinter() {
@@ -1294,19 +1551,31 @@ public class Main {
                 return;
             }
             String html =
-                "<!doctype html><html><head><meta charset='utf-8'><title>Ticket Printer</title></head><body>" +
-                "<h2>Seleccionar impresora</h2>" +
-                "<select id='printers'></select><button onclick='save()'>Guardar</button>" +
-                "<p id='selected'></p>" +
+                "<!doctype html><html><head><meta charset='utf-8'><title>Ticket Printer</title>" +
+                "<style>body{font-family:Segoe UI,Arial,sans-serif;margin:24px;max-width:760px}section{border:1px solid #ddd;padding:16px;margin:0 0 16px}label{display:block;margin:10px 0 4px}select,input{min-width:360px;padding:6px}button{margin-top:12px;padding:7px 12px}</style>" +
+                "</head><body>" +
+                "<h2>Ticket Printer</h2>" +
+                "<section><h3>Tickets ESC/POS</h3>" +
+                "<label>Impresora de tickets</label><select id='printers'></select> <button onclick='saveTicketPrinter()'>Guardar</button>" +
+                "<p id='selected'></p></section>" +
+                "<section><h3>Etiquetas Brother</h3>" +
+                "<label>Impresora de etiquetas</label><select id='labelPrinter'></select>" +
+                "<label>Carpeta de plantillas .lbx</label><input id='labelTemplateDir' placeholder='C:\\\\Etiquetas'>" +
+                "<p id='labelSelected'></p><p id='templates'></p><button onclick='saveLabelConfig()'>Guardar etiquetas</button></section>" +
                 "<script>" +
-                "async function load(){const r=await fetch('/printers');const j=await r.json();" +
-                "const s=document.getElementById('printers');s.innerHTML='';" +
-                "j.printers.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;" +
-                "if(p===j.selected){o.selected=true;}s.appendChild(o);});" +
-                "document.getElementById('selected').textContent='Actual: '+(j.selected||'Sin seleccionar');}" +
-                "async function save(){const name=document.getElementById('printers').value;" +
+                "let printers=[];" +
+                "function fillSelect(id,selected){const s=document.getElementById(id);s.innerHTML='';printers.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;if(p===selected){o.selected=true;}s.appendChild(o);});}" +
+                "async function load(){const r=await fetch('/printers');const j=await r.json();printers=j.printers||[];fillSelect('printers',j.selected);" +
+                "document.getElementById('selected').textContent='Actual: '+(j.selected||'Sin seleccionar');" +
+                "const lr=await fetch('/label/brother/config');const lj=await lr.json();fillSelect('labelPrinter',lj.printerName);" +
+                "document.getElementById('labelTemplateDir').value=lj.templateDir||'';" +
+                "document.getElementById('labelSelected').textContent='Actual: '+(lj.printerName||'Sin seleccionar');" +
+                "document.getElementById('templates').textContent='Plantillas: '+((lj.templates||[]).join(', ')||'sin .lbx detectadas');}" +
+                "async function saveTicketPrinter(){const name=document.getElementById('printers').value;" +
                 "await fetch('/printer/select',{method:'POST',headers:{'Content-Type':'application/json'}," +
                 "body:JSON.stringify({name})});await load();alert('Impresora guardada');}" +
+                "async function saveLabelConfig(){const printerName=document.getElementById('labelPrinter').value;const templateDir=document.getElementById('labelTemplateDir').value;" +
+                "const r=await fetch('/label/brother/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({printerName,templateDir})});const j=await r.json();await load();alert(j.ok?'Configuracion de etiquetas guardada':j.error);}" +
                 "load();" +
                 "</script></body></html>";
             sendHtml(exchange, html);
@@ -1404,6 +1673,78 @@ public class Main {
         }
     }
 
+    static class BrotherLabelConfigHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) {
+                return;
+            }
+            try {
+                if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendJson(exchange, 200, brotherLabelConfigResponse());
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendJson(exchange, 405, Map.of("ok", false, "error", "Metodo no permitido"));
+                    return;
+                }
+
+                String body = readBody(exchange);
+                Object parsed = Json.parse(body);
+                if (!(parsed instanceof Map<?, ?> map)) {
+                    sendJson(exchange, 400, Map.of("ok", false, "error", "JSON invalido"));
+                    return;
+                }
+
+                String printerName = asString(map.get("printerName"), "").trim();
+                if (printerName.isBlank()) {
+                    printerName = asString(map.get("name"), "").trim();
+                }
+                if (printerName.isBlank()) {
+                    sendJson(exchange, 400, Map.of("ok", false, "error", "Falta 'printerName'"));
+                    return;
+                }
+                PrintService printer = findPrinterByName(printerName);
+                if (printer == null) {
+                    sendJson(exchange, 404, Map.of("ok", false, "error", "Impresora de etiquetas no encontrada"));
+                    return;
+                }
+
+                String templateDir = asString(map.get("templateDir"), "").trim();
+                if (templateDir.isBlank()) {
+                    templateDir = asString(map.get("templatesDir"), "").trim();
+                }
+                if (templateDir.isBlank()) {
+                    templateDir = defaultLabelTemplateDir().toString();
+                }
+                Path dir = Paths.get(templateDir).toAbsolutePath().normalize();
+                if (!Files.isDirectory(dir)) {
+                    sendJson(exchange, 400, Map.of("ok", false, "error", "No existe la carpeta de plantillas: " + dir));
+                    return;
+                }
+
+                Settings s = settingsRef.get();
+                s.labelPrinterName = printer.getName();
+                s.labelTemplateDir = dir.toString();
+                saveSettings(s);
+                sendJson(exchange, 200, brotherLabelConfigResponse());
+            } catch (Exception e) {
+                sendJson(exchange, 500, Map.of("ok", false, "error", e.getMessage()));
+            }
+        }
+
+        private Map<String, Object> brotherLabelConfigResponse() {
+            Settings s = settingsRef.get();
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("ok", true);
+            response.put("printerName", asString(s.labelPrinterName, ""));
+            response.put("templateDir", asString(s.labelTemplateDir, defaultLabelTemplateDir().toString()));
+            response.put("templates", listBrotherTemplateNames());
+            response.put("printers", listPrinterNames());
+            return response;
+        }
+    }
+
     static class PrintTicketHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -1446,6 +1787,43 @@ public class Main {
                 sendJson(exchange, 400, Map.of("ok", false, "error", e.getMessage()));
             } catch (Exception e) {
                 sendJson(exchange, 500, Map.of("ok", false, "error", e.getMessage()));
+            }
+        }
+    }
+
+    static class BrotherLabelHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) {
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJson(exchange, 405, Map.of("ok", false, "error", "Metodo no permitido"));
+                return;
+            }
+            try {
+                String body = readBody(exchange);
+                Object parsed = Json.parse(body);
+                if (!(parsed instanceof Map<?, ?> map)) {
+                    sendJson(exchange, 400, Map.of("ok", false, "error", "JSON invalido"));
+                    return;
+                }
+                @SuppressWarnings("unchecked")
+                Map<String, Object> payload = (Map<String, Object>) map;
+
+                Map<String, Object> result = printBrotherBpacLabel(payload);
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("ok", true);
+                response.putAll(result);
+                sendJson(exchange, 200, response);
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, Map.of("ok", false, "error", e.getMessage()));
+            } catch (Exception e) {
+                sendJson(exchange, 500, Map.of(
+                    "ok", false,
+                    "error", e.getMessage(),
+                    "hint", "Verifica que el driver Brother QL-800 y el SDK Brother b-PAC esten instalados."
+                ));
             }
         }
     }

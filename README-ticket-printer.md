@@ -63,6 +63,9 @@ Invoke-RestMethod http://127.0.0.1:5001/printer -Method Post -ContentType "appli
 - `GET /queue` -> cola de impresion de la impresora seleccionada
 - `POST /printer/select` body: `{ "name": "Mi Impresora" }`
 - `POST /printer` body JSON del ticket
+- `GET /label/brother/config` -> configuracion de etiquetas Brother
+- `POST /label/brother/config` -> guarda impresora y carpeta de plantillas Brother
+- `POST /label/brother` body JSON para etiquetas Brother por SDK b-PAC
 
 ## JSON soportado en /printer
 - `ticketType`: `nota_venta` o `factura`
@@ -102,9 +105,64 @@ Para `ticketType = nota_venta`, tambien soporta objeto estructurado en `data`:
 - Configurar inicio con Windows
 - Configurar si el servicio inicia automaticamente al abrir la app
 
+## Etiquetas Brother QL-800 con SDK b-PAC
+Este endpoint usa el SDK Brother b-PAC instalado en Windows mediante COM.
+La etiqueta se disena en Brother P-touch Editor / b-PAC como plantilla `.lbx`; ahi defines el tamano de papel, orientacion, fuentes, codigos de barra y los nombres de objetos.
+
+Este flujo es separado de `/printer`:
+- `/printer` imprime tickets ESC/POS usando la impresora de tickets.
+- `/label/brother` imprime etiquetas Brother usando la impresora de etiquetas configurada.
+
+Requisitos:
+- Driver de la Brother QL-800 instalado.
+- Brother b-PAC SDK instalado.
+- Plantilla `.lbx` creada con objetos nombrados, por ejemplo `cliente`, `folio`, `fecha`, `equipo`, `marca`, `modelo`, `serie`, `problema`.
+
+Configurar impresora de etiquetas y carpeta de plantillas:
+```powershell
+$config = @{
+  printerName = "Brother QL-810W"
+  templateDir = "C:\Etiquetas"
+} | ConvertTo-Json
+
+Invoke-RestMethod http://127.0.0.1:5001/label/brother/config -Method Post -ContentType "application/json" -Body $config
+```
+
+Consultar configuracion y plantillas disponibles:
+```powershell
+Invoke-RestMethod http://127.0.0.1:5001/label/brother/config
+```
+
+Imprimir usando solo el nombre de plantilla:
+```powershell
+$label = @{
+  templateName = "mantenimiento"
+  copies = 1
+  fields = @{
+    cliente = "Contador Ivan De Jesus (UPGCH C.COMPRAS)"
+    folio = "1713475"
+    fecha = "06/04/2026"
+    equipo = "LAPTOP"
+    marca = "DELL"
+    modelo = "INSPIRON"
+    serie = "3VW3"
+    problema = "EL EQUIPO VA CON UN PROBLEMA EN LA BISAGRA DE DISPLAY"
+  }
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod http://127.0.0.1:5001/label/brother -Method Post -ContentType "application/json" -Body $label
+```
+
+Notas:
+- El tamano de etiqueta se controla desde la plantilla `.lbx`, por ejemplo 29x90, 62x29, etc.
+- Los nombres dentro de `fields` deben coincidir con los nombres de objetos de la plantilla.
+- Tambien puedes enviar `templatePath` si necesitas usar una ruta completa de plantilla.
+- Tambien puedes enviar `printerName` si quieres sobreescribir la impresora configurada solo en esa impresion.
+- Puedes enviar `ignoreMissingObjects = $true` si quieres ignorar campos que no existan en la plantilla.
+
 ## Nota
 - Dependencia local usada: `lib\escpos-coffee-4.1.0.jar` (embebida dentro de `dist\TicketPrinterServer.jar` al compilar).
-- El servicio guarda la impresora elegida en `selected-printer.txt` en la misma carpeta.
+- El servicio guarda la impresora elegida en `%APPDATA%\TicketPrinter\selected-printer.txt`.
 - Para instalador `.exe` tipo setup, usa WiX + `jpackage --type exe` o empaqueta este app-image con Inno Setup/NSIS.
 
 
