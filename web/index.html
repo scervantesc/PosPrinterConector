@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PrinterPOS</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23156b4b'/%3E%3Cpath d='M8 4h16v7H8zM4 11h24v13H4z' fill='white'/%3E%3Cpath d='M8 19h16v10H8z' fill='%23156b4b'/%3E%3Cpath d='M10 20h12v8H10z' fill='white'/%3E%3Cpath d='M12 23h8m-8 2h8' stroke='%23156b4b'/%3E%3C/svg%3E" />
+    <style>
+      :root {
+        font-family:
+          Segoe UI,
+          Arial,
+          sans-serif;
+        color: #23332e;
+        background: #f3f5f3;
+        font-size: 14px;
+        --green: #156b4b;
+        --muted: #6b7973;
+        --border: #dfe6e1;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      header {
+        background: #fff;
+        border-bottom: 1px solid var(--border);
+      }
+      .top {
+        max-width: 1180px;
+        margin: auto;
+        padding: 22px 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .mark {
+        background: var(--green);
+        color: white;
+        border-radius: 12px;
+        padding: 12px;
+        display: grid;
+        place-items: center;
+      }
+      .mark svg {
+        width: 24px;
+        height: 24px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0;
+        letter-spacing: -0.5px;
+      }
+      .brand p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .status {
+        background: #eaf5ee;
+        color: var(--green);
+        border-radius: 30px;
+        padding: 8px 12px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .status:before {
+        content: "●";
+        margin-right: 7px;
+      }
+      main {
+        max-width: 1180px;
+        margin: auto;
+        padding: 30px 28px;
+      }
+      .intro {
+        margin-bottom: 24px;
+      }
+      h2 {
+        font-size: 27px;
+        letter-spacing: -0.8px;
+        margin: 0 0 8px;
+      }
+      p {
+        line-height: 1.6;
+        color: var(--muted);
+        margin: 8px 0;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 310px;
+        gap: 24px;
+        align-items: start;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        margin-bottom: 20px;
+        overflow: hidden;
+      }
+      .card-head {
+        padding: 22px 24px;
+        border-bottom: 1px solid #edf0ed;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .number {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--green);
+        background: #edf5ef;
+        padding: 8px;
+        border-radius: 8px;
+      }
+      h3 {
+        font-size: 16px;
+        margin: 0;
+      }
+      .card-head p {
+        margin: 4px 0 0;
+        font-size: 12px;
+      }
+      .body {
+        padding: 24px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .full {
+        grid-column: 1/-1;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      input:not([type="checkbox"]),
+      select {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid #ccd7cf;
+        border-radius: 8px;
+        background: #fff;
+        color: #23332e;
+        min-width: 0;
+      }
+      input:focus,
+      select:focus {
+        outline: 3px solid #d6ede0;
+        border-color: var(--green);
+      }
+      small {
+        display: block;
+        color: var(--muted);
+        line-height: 1.5;
+        margin-top: 7px;
+        font-size: 11px;
+      }
+      .inline {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .inline select {
+        flex: 1;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 22px;
+      }
+      button {
+        border: 1px solid var(--border);
+        background: #fff;
+        color: #32453c;
+        padding: 11px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button:hover {
+        background: #f0f5f1;
+      }
+      button:focus-visible {
+        outline: 3px solid #96c5ad;
+      }
+      button.primary {
+        background: var(--green);
+        border-color: var(--green);
+        color: white;
+      }
+      button.primary:hover {
+        background: #105439;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+      .hint {
+        padding: 12px 14px;
+        background: #f5f8f5;
+        border-radius: 8px;
+        font-size: 12px;
+      }
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        margin: 0;
+      }
+      .check input {
+        accent-color: var(--green);
+        width: 17px;
+        height: 17px;
+      }
+      .upload {
+        padding: 18px;
+        border: 1px dashed #c2d2c6;
+        border-radius: 10px;
+        background: #fafcf9;
+      }
+      .upload p {
+        font-size: 12px;
+      }
+      .subtle {
+        font-size: 12px;
+      }
+      .danger {
+        color: #ab3b38;
+      }
+      aside {
+        position: sticky;
+        top: 20px;
+      }
+      .preview-head {
+        padding: 20px 22px;
+      }
+      .preview-head h3 {
+        font-size: 14px;
+      }
+      .paper-wrap {
+        background: #e9eee9;
+        padding: 24px 18px;
+        display: flex;
+        justify-content: center;
+      }
+      .receipt {
+        width: 100%;
+        max-width: 230px;
+        background: white;
+        box-shadow: 0 5px 14px #273e3212;
+        padding: 24px 14px;
+        font-family: Consolas, monospace;
+        overflow-wrap: anywhere;
+        font-size: 10px;
+      }
+      .receipt-title {
+        text-align: center;
+        font-weight: bold;
+      }
+      .receipt-rule {
+        border-top: 1px dashed #a5ada7;
+        margin: 12px 0;
+      }
+      .receipt-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 8px 0;
+      }
+      .receipt-center {
+        text-align: center;
+      }
+      .preview-foot {
+        padding: 16px 20px;
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .tag {
+        display: inline-block;
+        font-size: 11px;
+        background: #f0f4f0;
+        border: 1px solid var(--border);
+        padding: 5px 8px;
+        border-radius: 6px;
+        margin: 4px 4px 0 0;
+      }
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 14px 22px;
+        border-radius: 10px;
+        background: #203e2e;
+        color: white;
+        box-shadow: 0 8px 30px #0002;
+        z-index: 5;
+        max-width: 90vw;
+      }
+      .toast.error {
+        background: #8e302f;
+      }
+      .foot {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 20px;
+      }
+      .unsaved {
+        font-size: 12px;
+        color: #966726;
+      }
+      .logo-preview {
+        display: none;
+        max-width: 180px;
+        max-height: 80px;
+        object-fit: contain;
+        margin: 14px auto;
+      }
+      summary {
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 16px 24px;
+      }
+      details .body {
+        padding-top: 0;
+      }
+      @media (max-width: 850px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          position: static;
+        }
+        .paper-wrap {
+          padding: 20px;
+        }
+        .top,
+        main {
+          padding: 20px;
+        }
+        .grid {
+          gap: 16px;
+        }
+      }
+      @media (max-width: 480px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .top {
+          align-items: start;
+        }
+        .status {
+          font-size: 11px;
+        }
+        h2 {
+          font-size: 23px;
+        }
+        .body,
+        .card-head {
+          padding: 18px;
+        }
+        .inline {
+          flex-wrap: wrap;
+        }
+        .inline button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="top">
+        <div class="brand">
+          <span class="mark"
+            ><svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              aria-hidden="true"
+            >
+              <path d="M6 8V3h12v5M6 17H3V8h18v9h-3M6 14h12v7H6z" />
+              <path d="M16 11h2M9 17h6M9 19h6" /></svg
+          ></span>
+          <div>
+            <h1>PrinterPOS</h1>
+         
+          </div>
+        </div>
+        <span id="service" class="status">Conectando</span>
+      </div>
+    </header>
+    <main>
+      <div class="intro">
+        <h2>Todo listo para imprimir</h2>
+        <p>
+          Configura tu impresora, ajusta el ticket y dale el toque de tu
+          negocio.
+        </p>
+      </div>
+      <div class="layout">
+        <div>
+          <section class="card">
+            <div class="card-head">
+              <span class="number">01</span>
+              <div>
+                <h3>Impresora de tickets</h3>
+                <p>Selecciona el equipo que usas para tus ventas.</p>
+              </div>
+            </div>
+            <div class="body">
+              <label for="printers">Impresora disponible</label>
+              <div class="inline">
+                <select id="printers"></select
+                ><button onclick="saveTicketPrinter()">
+                  Guardar impresora
+                </button>
+              </div>
+              <p id="selected" class="subtle"></p>
+            </div>
+          </section>
+          <section class="card">
+            <div class="card-head">
+              <span class="number">02</span>
+              <div>
+                <h3>Formato del ticket</h3>
+                <p>Adapta el contenido al papel de tu impresora.</p>
+              </div>
+            </div>
+            <div class="body">
+              <div class="grid">
+                <div>
+                  <label for="paper">Ancho del papel</label
+                  ><select id="paper" onchange="paperChanged()">
+                    <option value="58">58 mm · compacto</option>
+                    <option value="80">80 mm · amplio</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="chars">Caracteres por línea</label
+                  ><input
+                    id="chars"
+                    type="number"
+                    min="24"
+                    max="72"
+                    required
+                  /><small>Entre 24 y 72, según la fuente de tu equipo.</small>
+                </div>
+                <div>
+                  <label for="companySize"
+                    >Tamaño de letra de todo el ticket</label
+                  ><select id="companySize">
+                    <option value="1">Normal</option>
+                    <option value="2">Alto · doble altura</option>
+                    <option value="3">Grande · doble ancho y altura</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="companySpacing"
+                    >Espacio debajo de la empresa</label
+                  ><input
+                    id="companySpacing"
+                    type="number"
+                    min="0"
+                    max="3"
+                    required
+                  /><small>De 0 a 3 líneas en notas de venta y facturas.</small>
+                </div>
+                <div class="full hint">
+                  Punto de partida: <strong>58 mm / 32 caracteres</strong> o
+                  <strong>80 mm / 42 caracteres</strong>. El tamaño Grande
+                  reduce a la mitad los caracteres efectivos por línea.
+                </div>
+              </div>
+              <details>
+                <summary>Ajuste del logotipo</summary>
+                <div class="body">
+                  <label for="dots">Ancho imprimible en puntos</label
+                  ><input
+                    id="dots"
+                    type="number"
+                    min="128"
+                    max="576"
+                    required
+                  /><small
+                    >Habitualmente 384 puntos en 58 mm y 576 en 80 mm.</small
+                  >
+                </div>
+              </details>
+              <div class="actions">
+                <button class="primary" onclick="saveTicketConfig()">
+                  Guardar formato</button
+                ><span id="dirty" class="unsaved" role="status"></span>
+              </div>
+            </div>
+          </section>
+          <section class="card">
+            <div class="card-head">
+              <span class="number">03</span>
+              <div>
+                <h3>Logotipo de tu negocio</h3>
+                <p>
+                  Se imprime al inicio del ticket, ajustado al ancho del papel.
+                </p>
+              </div>
+            </div>
+            <div class="body">
+              <label class="check"
+                ><input id="printLogo" type="checkbox" /> Imprimir logotipo al
+                inicio</label
+              ><small>Guarda el formato para aplicar esta opción.</small>
+              <div class="upload" style="margin-top: 18px">
+                <label for="logo">Selecciona una imagen</label
+                ><input
+                  id="logo"
+                  type="file"
+                  accept="image/png,image/jpeg"
+                /><small
+                  >PNG o JPEG · máximo 2 MB · los fondos transparentes se
+                  imprimen blancos.</small
+                ><img
+                  id="localLogo"
+                  class="logo-preview"
+                  alt="Vista previa del archivo seleccionado"
+                />
+                <p id="logoStatus"></p>
+                <div class="actions">
+                  <button onclick="uploadLogo()">Cargar logotipo</button
+                  ><button class="danger" onclick="uploadLogo(true)">
+                    Quitar logotipo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="card">
+            <div class="card-head">
+              <span class="number">04</span>
+              <div>
+                <h3>Etiquetas Brother</h3>
+                <p>Configuración independiente de los tickets.</p>
+              </div>
+            </div>
+            <div class="body">
+              <div class="grid">
+                <div class="full">
+                  <label for="labelPrinter">Impresora de etiquetas</label
+                  ><select id="labelPrinter"></select>
+                  <p id="labelSelected" class="subtle"></p>
+                </div>
+                <div class="full">
+                  <label for="labelTemplateDir"
+                    >Carpeta de plantillas .lbx</label
+                  ><input
+                    id="labelTemplateDir"
+                    placeholder="C:\Etiquetas"
+                  /><small
+                    >Las plantillas definen el diseño y tamaño de la
+                    etiqueta.</small
+                  >
+                </div>
+                <div id="templates" class="full"></div>
+              </div>
+              <div class="actions">
+                <button onclick="saveLabelConfig()">Guardar etiquetas</button>
+              </div>
+            </div>
+          </section>
+        </div>
+        <aside>
+          <section class="card">
+            <div class="preview-head">
+              <h3>Vista orientativa</h3>
+              <p class="subtle" id="previewMeta"></p>
+            </div>
+            <div class="paper-wrap">
+              <div class="receipt" id="receipt">
+                <div class="receipt-title" id="receiptTitle">TU EMPRESA</div>
+                <div class="receipt-center">Gracias por tu compra</div>
+                <div class="receipt-rule"></div>
+                <div class="receipt-row">
+                  <span>Ticket</span><span>#0001</span>
+                </div>
+                <div class="receipt-row">
+                  <span>1 x Producto de ejemplo</span>
+                </div>
+                <div class="receipt-row">
+                  <span>Precio</span><span>$100.00</span>
+                </div>
+                <div class="receipt-rule"></div>
+                <div class="receipt-row">
+                  <strong>TOTAL</strong><strong>$100.00</strong>
+                </div>
+                <div class="receipt-rule"></div>
+                <div class="receipt-center">¡Vuelve pronto!</div>
+              </div>
+            </div>
+            <div class="preview-foot">
+              Representación aproximada. Comprueba el resultado en tu impresora
+              con una prueba del formato guardado.<button
+                style="width: 100%; margin-top: 14px"
+                onclick="testTicket()"
+              >
+                Imprimir prueba
+              </button>
+            </div>
+          </section>
+          <p class="foot">
+            Servicio local · puerto 5001<br />Los ajustes se conservan al cerrar
+            la app.
+          </p>
+        </aside>
+      </div>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script>
+      const el = (id) => document.getElementById(id);
+      let printers = [],
+        toastTimer,
+        logoUrl;
+      function notify(message, error = false) {
+        const t = el("toast");
+        t.textContent = message;
+        t.className = "toast" + (error ? " error" : "");
+        t.hidden = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => (t.hidden = true), error ? 8000 : 4000);
+      }
+      async function get(url) {
+        const r = await fetch(url, { cache: "no-store" });
+        const j = await r.json();
+        if (!r.ok || j.ok === false)
+          throw Error(j.error || "No se pudo consultar la configuración");
+        return j;
+      }
+      async function request(url, body) {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.ok) throw Error(j.error || "No se pudo guardar");
+        return j;
+      }
+      async function action(task) {
+        const buttons = document.querySelectorAll("button");
+        buttons.forEach((b) => (b.disabled = true));
+        try {
+          await task();
+        } catch (e) {
+          notify(e.message, true);
+        } finally {
+          buttons.forEach((b) => (b.disabled = false));
+        }
+      }
+      function preview() {
+        const size = Number(el("companySize").value) || 1;
+        const chars = Number(el("chars").value) || 32;
+        el("previewMeta").textContent =
+          el("paper").value +
+          " mm · " +
+          (size === 3 ? Math.floor(chars / 2) : chars) +
+          " caracteres efectivos";
+        el("receipt").style.maxWidth =
+          el("paper").value === "58" ? "180px" : "240px";
+        el("receipt").style.fontSize =
+          size === 3 ? "14px" : size === 2 ? "12px" : "10px";
+        el("receiptTitle").style.marginBottom =
+          Number(el("companySpacing").value) * 12 + "px";
+      }
+      function dirty() {
+        el("dirty").textContent = "Cambios sin guardar";
+        preview();
+      }
+      function paperChanged() {
+        const narrow = el("paper").value === "58";
+        el("chars").value = narrow ? 32 : 42;
+        el("dots").value = narrow ? 384 : 576;
+        el("dots").max = narrow ? 384 : 576;
+        dirty();
+      }
+      function fillSelect(id, selected) {
+        const s = el(id);
+        s.replaceChildren();
+        for (const p of printers) {
+          const o = document.createElement("option");
+          o.value = p;
+          o.textContent = p;
+          o.selected = p === selected;
+          s.appendChild(o);
+        }
+        if (!printers.length) {
+          const o = document.createElement("option");
+          o.value = "";
+          o.textContent = "No hay impresoras disponibles";
+          s.appendChild(o);
+        }
+      }
+      async function loadTicketConfig() {
+        const j = await get("/printer/config");
+        el("companySize").value = j.ticketFontSize || j.companyFontSize;
+        el("companySpacing").value = j.companySpacing;
+        el("paper").value = j.paperWidthMm;
+        el("chars").value = j.charactersPerLine;
+        el("dots").value = j.printableWidthDots;
+        el("dots").max = j.paperWidthMm === 58 ? 384 : 576;
+        el("printLogo").checked = j.printLogo;
+        el("logoStatus").textContent = j.hasLogo
+          ? "✓ Logotipo guardado"
+          : "Todavía no hay un logotipo guardado";
+        el("dirty").textContent = "";
+        preview();
+      }
+      function format() {
+        for (const id of ["chars", "companySpacing", "dots"])
+          if (!el(id).reportValidity())
+            throw Error("Revisa los valores del formato");
+        return {
+          paperWidthMm: Number(el("paper").value),
+          charactersPerLine: Number(el("chars").value),
+          printableWidthDots: Number(el("dots").value),
+          printLogo: el("printLogo").checked,
+          ticketFontSize: Number(el("companySize").value),
+          companySpacing: Number(el("companySpacing").value),
+        };
+      }
+      async function saveTicketConfig() {
+        await action(async () => {
+          await request("/printer/config", format());
+          await loadTicketConfig();
+          notify("Formato guardado");
+        });
+      }
+      async function uploadLogo(remove = false) {
+        await action(async () => {
+          const file = el("logo").files[0];
+          if (!remove && !file) throw Error("Selecciona una imagen PNG o JPEG");
+          if (!remove && file.size > 2097152)
+            throw Error("La imagen debe pesar como máximo 2 MB");
+          const r = await fetch("/printer/logo", {
+            method: "POST",
+            body: remove ? "" : file,
+          });
+          const j = await r.json();
+          if (!r.ok || !j.ok)
+            throw Error(j.error || "No se pudo guardar el logotipo");
+          el("logoStatus").textContent = remove
+            ? "Todavía no hay un logotipo guardado"
+            : "✓ Logotipo guardado";
+          if (remove) {
+            el("logo").value = "";
+            el("localLogo").style.display = "none";
+            if (logoUrl) URL.revokeObjectURL(logoUrl);
+          }
+          notify(remove ? "Logotipo eliminado" : "Logotipo guardado");
+        });
+      }
+      async function testTicket() {
+        await action(async () => {
+          if (el("dirty").textContent)
+            throw Error("Guarda el formato antes de imprimir la prueba");
+          const c = await get("/printer/config");
+          await request("/printer", {
+            lines: [
+              "PRUEBA DE IMPRESION",
+              c.paperWidthMm + " mm / " + c.charactersPerLine + " caracteres",
+              "1234567890".repeat(8).slice(0, c.charactersPerLine),
+              "Texto largo para comprobar que los renglones se ajustan al ancho configurado sin perder palabras.",
+              "Fin de prueba",
+            ],
+          });
+          notify("Prueba enviada a la impresora");
+        });
+      }
+      async function loadPrinters() {
+        const j = await get("/printers");
+        printers = j.printers || [];
+        fillSelect("printers", j.selected);
+        el("selected").textContent = "Guardada: " + (j.selected || "ninguna");
+        const lj = await get("/label/brother/config");
+        fillSelect("labelPrinter", lj.printerName);
+        el("labelTemplateDir").value = lj.templateDir || "";
+        el("labelSelected").textContent =
+          "Guardada: " + (lj.printerName || "ninguna");
+        el("templates").replaceChildren();
+        for (const name of lj.templates || []) {
+          const tag = document.createElement("span");
+          tag.className = "tag";
+          tag.textContent = name;
+          el("templates").appendChild(tag);
+        }
+        if (!lj.templates?.length)
+          el("templates").textContent = "Sin plantillas detectadas";
+      }
+      async function saveTicketPrinter() {
+        await action(async () => {
+          await request("/printer/select", { name: el("printers").value });
+          await loadPrinters();
+          notify("Impresora guardada");
+        });
+      }
+      async function saveLabelConfig() {
+        await action(async () => {
+          await request("/label/brother/config", {
+            printerName: el("labelPrinter").value,
+            templateDir: el("labelTemplateDir").value,
+          });
+          await loadPrinters();
+          notify("Configuración de etiquetas guardada");
+        });
+      }
+      for (const id of [
+        "chars",
+        "companySize",
+        "companySpacing",
+        "dots",
+        "printLogo",
+      ])
+        el(id).addEventListener("input", dirty);
+      el("logo").addEventListener("change", () => {
+        if (logoUrl) URL.revokeObjectURL(logoUrl);
+        const file = el("logo").files[0];
+        el("localLogo").style.display = "none";
+        if (
+          file &&
+          ["image/png", "image/jpeg"].includes(file.type) &&
+          file.size <= 2097152
+        ) {
+          logoUrl = URL.createObjectURL(file);
+          el("localLogo").src = logoUrl;
+          el("localLogo").style.display = "block";
+        }
+      });
+      async function init() {
+        try {
+          await get("/health");
+          el("service").textContent = "Servicio activo";
+          await Promise.all([loadPrinters(), loadTicketConfig()]);
+        } catch (e) {
+          el("service").textContent = "Revisar conexión";
+          notify(e.message, true);
+        }
+      }
+      init();
+    </script>
+  </body>
+</html>

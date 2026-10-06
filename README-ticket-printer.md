@@ -1,4 +1,4 @@
-﻿# Ticket Printer (ESC/POS) local
+# Ticket Printer (ESC/POS) local
 
 Servicio Java para imprimir tickets ESC/POS por HTTP local.
 Incluye UI web, UI nativa y System Tray en Windows.
@@ -8,6 +8,10 @@ Motor de impresion: `escpos-coffee`.
 - `http://127.0.0.1:5001`
 
 ## Flujo rapido
+Para generar un instalador Windows con menu Inicio, escritorio opcional y desinstalador, usa `build-setup.ps1 -Compiler "C:\ruta\Inno Setup\ISCC.exe"`. Empaqueta la ultima carpeta `portable\release-*`; puedes elegir otra con `-AppSource`. El resultado es `portable\setup-*\PrinterPOS-Setup.exe`. Incluye Java y se instala para el usuario actual sin requerir administrador. La definicion del instalador esta en `packaging\PrinterPOS.iss`.
+
+En Windows, abre `Iniciar-TicketPrinter.cmd` con doble clic. Detecta Java, inicia el servicio y abre la configuracion web. Si el servicio ya esta activo, abre esa instancia. Los errores de arranque se guardan en `.ticket-printer.stderr.log`.
+
 1. Compilar:
 ```powershell
 .\build-server.ps1
@@ -94,6 +98,17 @@ Para `ticketType = nota_venta`, tambien soporta objeto estructurado en `data`:
 - Si `ticketType = factura` y llega `data.Venta.Qr`, se imprime el QR de forma nativa en ESC/POS.
 
 ## UI local para seleccionar impresora
+- La UI web permite guardar papel **58 u 80 mm**, **caracteres por linea** (24 a 72) y ancho imprimible del logotipo.
+- El tamano de letra de todo el ticket permite elegir **Normal**, **Alto** (doble altura) o **Grande** (doble ancho y altura), mas 0 a 3 lineas de espacio debajo. El modo Grande reduce los caracteres por linea de todo el ticket a la mitad para evitar desbordamiento. Valores iniciales: Normal y 1 linea de espacio. La API acepta `ticketFontSize` (1, 2, 3; `companyFontSize` sigue aceptandose como alias) y `companySpacing` (0 a 3) en `/printer/config` y como excepcion por ticket en `/printer`. El tamano se aplica tambien a `lines` y `text`. El espacio debajo de Empresa se aplica a notas de venta y facturas estructuradas. `rawBase64` conserva los bytes originales.
+- Valores iniciales: 58 mm = 32 caracteres / 384 puntos; 80 mm = 42 caracteres / 576 puntos. Ajusta estos valores a la fuente y al area imprimible real de tu equipo.
+- Carga un logotipo PNG/JPEG de hasta 2 MB desde la UI. Se convierte a blanco y negro, conserva proporciones y se reduce al ancho configurado. Los fondos transparentes se imprimen blancos.
+- Guarda el formato y usa **Imprimir prueba** para calibrar. Puedes desactivar o quitar el logotipo.
+- Configuracion y logotipo se guardan en `%APPDATA%\TicketPrinter`; se aplican al reiniciar.
+- `GET /printer/config` consulta el formato; `POST /printer/config` guarda `{ "paperWidthMm": 58, "charactersPerLine": 32, "printableWidthDots": 384, "printLogo": true }`.
+- `POST /printer/logo` recibe los bytes PNG/JPEG directamente. Un cuerpo vacio elimina el logotipo.
+- En `POST /printer` puedes sobrescribir `paperWidthMm`, `charactersPerLine` y `printLogo` para un ticket. `charactersPerLine` tiene prioridad sobre el antiguo `ticketWidth`; si el cliente envia `ticketWidth`, ese ancho prevalece sobre la configuracion guardada. Omite ambos para usar el formato guardado.
+- `rawBase64` permanece sin modificaciones: el cliente controla ancho, imagen y corte en ese modo.
+- El logotipo usa raster ESC/POS `GS v 0`; requiere una impresora compatible. Los ajustes de caracteres controlan el formato del texto, no cambian la fuente fisica del equipo.
 - Abre `http://127.0.0.1:5001/` en navegador para elegir y guardar impresora.
 - En Windows tambien puedes usar la ventana nativa del programa para seleccionar impresora, abrir la UI web y arrancar/detener el servicio HTTP.
 

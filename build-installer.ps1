@@ -1,6 +1,6 @@
+param([string]$JdkBin = "C:\Program Files\Java\jdk-26\bin")
 $ErrorActionPreference = "Stop"
 
-$jdkBin = "C:\Program Files\Java\jdk-26\bin"
 if (!(Test-Path (Join-Path $jdkBin "javac.exe"))) {
     throw "No se encontro javac.exe en $jdkBin"
 }
@@ -11,8 +11,8 @@ $jpackage = Join-Path $jdkBin "jpackage.exe"
 
 New-Item -ItemType Directory -Force -Path build,dist,installer | Out-Null
 
-& $javac -d build Main.java
-& $jar --create --file dist/PluginApp.jar --main-class Main -C build .
+& (Join-Path $PSScriptRoot 'build-server.ps1') -JdkBin $JdkBin
+Copy-Item -LiteralPath dist/TicketPrinterServer.jar -Destination dist/PluginApp.jar -Force
 
 Write-Host "JAR generado: dist/PluginApp.jar"
 

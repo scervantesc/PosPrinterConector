@@ -20,6 +20,10 @@ import java.awt.TrayIcon;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -109,6 +113,8 @@ public class Main {
         server.createContext("/queue", new QueueHandler());
         server.createContext("/label/brother/config", new BrotherLabelConfigHandler());
         server.createContext("/label/brother", new BrotherLabelHandler());
+        server.createContext("/printer/config", new TicketConfigHandler());
+        server.createContext("/printer/logo", new LogoHandler());
         server.createContext("/printer", new PrintTicketHandler());
         server.setExecutor(null);
         server.start();
@@ -261,7 +267,7 @@ public class Main {
         });
         menu.add(exitItem);
 
-        trayIcon = new TrayIcon(createTrayImage(), "Ticket Printer ESC/POS", menu);
+        trayIcon = new TrayIcon(createTrayImage(), "PrinterPOS", menu);
         trayIcon.setImageAutoSize(true);
         trayIcon.addActionListener(e -> SwingUtilities.invokeLater(Main::showDesktopUi));
         SystemTray.getSystemTray().add(trayIcon);
@@ -270,24 +276,23 @@ public class Main {
     }
 
     private static Image createTrayImage() {
-        BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
-        int bg = 0xFF1E1E1E;
-        int fg = 0xFFFFFFFF;
-        for (int y = 0; y < 16; y++) {
-            for (int x = 0; x < 16; x++) {
-                image.setRGB(x, y, bg);
-            }
-        }
-        for (int x = 3; x <= 12; x++) {
-            image.setRGB(x, 4, fg);
-        }
-        for (int x = 4; x <= 11; x++) {
-            image.setRGB(x, 7, fg);
-        }
-        for (int x = 5; x <= 10; x++) {
-            image.setRGB(x, 10, fg);
-        }
-        image.setRGB(8, 13, fg);
+        BufferedImage image = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+        var graphics = image.createGraphics();
+        graphics.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics.setColor(new java.awt.Color(0x156B4B));
+        graphics.fillRoundRect(0, 0, 32, 32, 8, 8);
+        graphics.setColor(java.awt.Color.WHITE);
+        graphics.fillRect(8, 4, 16, 7);
+        graphics.fillRoundRect(4, 11, 24, 13, 4, 4);
+        graphics.setColor(new java.awt.Color(0x156B4B));
+        graphics.fillRect(8, 19, 16, 10);
+        graphics.setColor(java.awt.Color.WHITE);
+        graphics.fillRect(10, 20, 12, 8);
+        graphics.setColor(new java.awt.Color(0x156B4B));
+        graphics.fillOval(23, 14, 2, 2);
+        graphics.drawLine(12, 23, 20, 23);
+        graphics.drawLine(12, 25, 20, 25);
+        graphics.dispose();
         return image;
     }
 
@@ -313,7 +318,8 @@ public class Main {
     }
 
     private static void showDesktopUi() {
-        JFrame frame = new JFrame("Ticket Printer ESC/POS");
+        JFrame frame = new JFrame("PrinterPOS · Configuración");
+        frame.setIconImage(createTrayImage());
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.setSize(720, 340);
         frame.setLocationRelativeTo(null);
@@ -526,6 +532,12 @@ public class Main {
             p.load(Files.newBufferedReader(SETTINGS_FILE, StandardCharsets.UTF_8));
             settings.startServiceOnLaunch = Boolean.parseBoolean(p.getProperty("startServiceOnLaunch", "true"));
             settings.startWithWindows = Boolean.parseBoolean(p.getProperty("startWithWindows", "false"));
+            settings.paperWidthMm = p.getProperty("paperWidthMm", "80").equals("58") ? 58 : 80;
+            settings.charactersPerLine = clamp(asInt(p.getProperty("charactersPerLine"), settings.paperWidthMm == 58 ? 32 : 42), 24, 72);
+            settings.printableWidthDots = clamp(asInt(p.getProperty("printableWidthDots"), settings.paperWidthMm == 58 ? 384 : 576), 128, settings.paperWidthMm == 58 ? 384 : 576);
+            settings.printLogo = Boolean.parseBoolean(p.getProperty("printLogo", "true"));
+            settings.companyFontSize = clamp(asInt(p.getProperty("companyFontSize"), 1), 1, 3);
+            settings.companySpacing = clamp(asInt(p.getProperty("companySpacing"), 1), 0, 3);
             settings.labelPrinterName = p.getProperty("labelPrinterName", "");
             settings.labelTemplateDir = p.getProperty("labelTemplateDir", defaultLabelTemplateDir().toString());
             return settings;
@@ -540,6 +552,12 @@ public class Main {
             Properties p = new Properties();
             p.setProperty("startServiceOnLaunch", String.valueOf(settings.startServiceOnLaunch));
             p.setProperty("startWithWindows", String.valueOf(settings.startWithWindows));
+            p.setProperty("paperWidthMm", String.valueOf(settings.paperWidthMm));
+            p.setProperty("charactersPerLine", String.valueOf(settings.charactersPerLine));
+            p.setProperty("printableWidthDots", String.valueOf(settings.printableWidthDots));
+            p.setProperty("printLogo", String.valueOf(settings.printLogo));
+            p.setProperty("companyFontSize", String.valueOf(settings.companyFontSize));
+            p.setProperty("companySpacing", String.valueOf(settings.companySpacing));
             p.setProperty("labelPrinterName", asString(settings.labelPrinterName, ""));
             p.setProperty("labelTemplateDir", asString(settings.labelTemplateDir, defaultLabelTemplateDir().toString()));
             try (OutputStream os = Files.newOutputStream(SETTINGS_FILE)) {
@@ -606,6 +624,12 @@ public class Main {
         boolean startWithWindows;
         String labelPrinterName;
         String labelTemplateDir;
+        int paperWidthMm = 80;
+        int charactersPerLine = 42;
+        int printableWidthDots = 576;
+        boolean printLogo = true;
+        int companyFontSize = 1;
+        int companySpacing = 1;
     }
 
     private static Map<String, Object> printBrotherBpacLabel(Map<String, Object> payload) throws Exception {
@@ -866,6 +890,13 @@ finally {
         try (EscPos escpos = new EscPos(out)) {
             escpos.initializePrinter();
             escpos.setCharsetName(options.charset.name());
+            Settings config = settingsRef.get();
+            int paper = asInt(payload.get("paperWidthMm"), config.paperWidthMm);
+            int dots = payload.containsKey("paperWidthMm") && paper != config.paperWidthMm ? (paper == 58 ? 384 : 576) : config.printableWidthDots;
+            if (asBoolean(payload.get("printLogo"), config.printLogo) && Files.exists(APP_DATA_DIR.resolve("logo.png"))) {
+                byte[] raster = logoRaster(Files.readAllBytes(APP_DATA_DIR.resolve("logo.png")), dots);
+                escpos.write(raster, 0, raster.length);
+            }
 
             if (options.drawer) {
                 escpos.write(new byte[] {0x1B, 0x70, 0x00, 0x19, (byte) 0xFA}, 0, 5);
@@ -883,11 +914,14 @@ finally {
             if (!rendered) {
                 String align = plan.alignOverride == null ? options.align : plan.alignOverride;
                 boolean bold = plan.boldOverride == null ? options.bold : plan.boldOverride.booleanValue();
-                Style lineStyle = new Style()
+                Style lineStyle = ticketStyle(options)
                     .setJustification(toJustification(align))
                     .setBold(bold);
                 for (String line : plan.lines) {
-                    escpos.writeLF(lineStyle, line);
+                    for (String paragraph : line.split("\\R", -1)) {
+                        if (paragraph.isBlank()) escpos.writeLF(lineStyle, "");
+                        else writeWrapped(escpos, lineStyle, paragraph, options.ticketWidth);
+                    }
                 }
                 if (plan.qrData != null && !plan.qrData.isBlank()) {
                     QRCode qrCode = new QRCode()
@@ -922,25 +956,23 @@ finally {
         @SuppressWarnings("unchecked")
         List<Object> productos = (List<Object>) venta.getOrDefault("Productos", List.of());
 
-        Style normalLeft = new Style().setJustification(EscPosConst.Justification.Left_Default).setBold(false);
-        Style boldLeft = new Style().setJustification(EscPosConst.Justification.Left_Default).setBold(true);
-        Style boldCenter = new Style().setJustification(EscPosConst.Justification.Center).setBold(true);
-        Style title = new Style().setFontSize(Style.FontSize._2, Style.FontSize._2).setJustification(EscPosConst.Justification.Center).setFontName(Style.FontName.Font_B).setBold(true);
-        
-        writeWrapped(escpos, title, asString(data.get("Empresa"), ""), width);
+        Style normalLeft = ticketStyle(options).setJustification(EscPosConst.Justification.Left_Default).setBold(false);
+        Style boldLeft = ticketStyle(options).setJustification(EscPosConst.Justification.Left_Default).setBold(true);
+        Style boldCenter = ticketStyle(options).setJustification(EscPosConst.Justification.Center).setBold(true);
+        writeCompanyHeader(escpos, asString(data.get("Empresa"), ""), width, payload);
         writeWrapped(escpos, normalLeft, asString(data.get("Razon_Social"), ""), width);
         writeWrapped(escpos, normalLeft, "RFC: " + asString(data.get("Rfc"), ""), width);
         writeWrapped(escpos, normalLeft, asString(data.get("Direccion"), ""), width);
         writeWrapped(escpos, normalLeft, "TEL: " + asString(data.get("Telefono"), ""), width);
-        escpos.writeLF(normalLeft, divider);
+        writeWrapped(escpos, normalLeft, divider, width);
 
         writeWrapped(escpos, normalLeft, "Folio: " + asString(venta.get("Serie"), "") + "-" + asString(venta.get("Folio"), ""), width);
         writeWrapped(escpos, normalLeft, "Fecha: " + asString(venta.get("Fecha"), ""), width);
         writeWrapped(escpos, normalLeft, "Cliente: " + asString(cliente.get("Nombre"), ""), width);
         writeWrapped(escpos, normalLeft, "RFC: " + asString(cliente.get("Rfc"), ""), width);
-        escpos.writeLF(normalLeft, divider);
-        escpos.writeLF(boldLeft, "Cant / Clave / Descripcion / P.Unit / Importe");
-        escpos.writeLF(normalLeft, divider);
+        writeWrapped(escpos, normalLeft, divider, width);
+        writeWrapped(escpos, boldLeft, "Cant / Clave / Descripcion / P.Unit / Importe", width);
+        writeWrapped(escpos, normalLeft, divider, width);
 
         for (Object obj : productos) {
             Map<String, Object> p = asMap(obj);
@@ -952,31 +984,30 @@ finally {
             if (nombre.isBlank()) {
                 nombre = clave;
             }
-            writeWrapped(escpos, normalLeft, cantidad + " x " + nombre, width);
-            if (!clave.isBlank() && !clave.equals(nombre)) {
-                writeWrapped(escpos, normalLeft, "Clave: " + clave, width);
-            }
-            escpos.writeLF(normalLeft, twoCol("P.Unit: " + precio, "Imp: " + importe, width));
-            escpos.writeLF(normalLeft, repeat(".", width));
+            writeProductText(escpos, normalLeft, cantidad + " x " + nombre, width);
+            // if (!clave.isBlank() && !clave.equals(nombre)) {
+            //     writeWrapped(escpos, normalLeft, "Clave: " + clave, width);
+            // }
+            writeWrapped(escpos, normalLeft, twoCol("$" + precio, "$" + importe, width), width);
+            writeWrapped(escpos, normalLeft, repeat(".", width), width);
         }
 
-        escpos.writeLF(normalLeft, divider);
-        escpos.writeLF(normalLeft, twoCol("Subtotal", asString(venta.get("SubTotal"), "0.00"), width));
-        escpos.writeLF(normalLeft, twoCol("Descuento", asString(venta.get("Descuento"), "0.00"), width));
-        escpos.writeLF(normalLeft, twoCol("Impuestos", asString(venta.get("Impuestos"), "0.00"), width));
-        escpos.writeLF(boldLeft, twoCol("Total", asString(venta.get("Total"), "0.00"), width));
-        escpos.writeLF(normalLeft, twoCol("Cambio", asString(venta.get("Cambio"), "0.00"), width));
-        escpos.writeLF(normalLeft, divider);
+        writeWrapped(escpos, normalLeft, divider, width);
+        writeWrapped(escpos, normalLeft, twoCol("Subtotal", asString(venta.get("SubTotal"), "0.00"), width), width);
+        writeWrapped(escpos, normalLeft, twoCol("Descuento", asString(venta.get("Descuento"), "0.00"), width), width);
+        writeWrapped(escpos, normalLeft, twoCol("Impuestos", asString(venta.get("Impuestos"), "0.00"), width), width);
+        writeWrapped(escpos, boldLeft, twoCol("Total", asString(venta.get("Total"), "0.00"), width), width);
+        writeWrapped(escpos, normalLeft, twoCol("Cambio", asString(venta.get("Cambio"), "0.00"), width), width);
+        writeWrapped(escpos, normalLeft, divider, width);
         writeWrapped(escpos, normalLeft, asString(venta.get("CantLetra"), ""), width);
-        escpos.writeLF(normalLeft, divider);
+        writeWrapped(escpos, normalLeft, divider, width);
         writeWrapped(escpos, normalLeft, asString(venta.get("TkFooter"), ""), width);
         writeWrapped(escpos, normalLeft, asString(venta.get("SitioWeb"), ""), width);
         escpos.write("");
-        BarCode barcode = new BarCode();
-        escpos.write(barcode, asString(venta.get("Serie"), "") + asString(venta.get("Folio"), ""));
-        escpos.writeLF(boldCenter, "");
+        //BarCode barcode = new BarCode();
+        // escpos.write(barcode, asString(venta.get("Serie"), "") + asString(venta.get("Folio"), ""));
+        writeWrapped(escpos, boldCenter, "", width);
         escpos.feed(2);
-        escpos.close();
     }
 
     private static void renderFacturaDirect(EscPos escpos, Map<String, Object> payload, PrintOptions options) throws Exception {
@@ -992,23 +1023,22 @@ finally {
         @SuppressWarnings("unchecked")
         List<Object> productos = (List<Object>) venta.getOrDefault("Productos", List.of());
 
-        Style normalLeft = new Style().setJustification(EscPosConst.Justification.Left_Default).setBold(false);
-        Style boldLeft = new Style().setJustification(EscPosConst.Justification.Left_Default).setBold(true);
-        Style center = new Style().setJustification(EscPosConst.Justification.Center).setBold(false);
-        Style small = new Style().setJustification(EscPosConst.Justification.Left_Default).setBold(false).setFontSize(Style.FontSize._1, Style.FontSize._1);
-        // Style boldCenter = new Style().setJustification(EscPosConst.Justification.Center).setBold(true);
-        Style title = new Style().setFontSize(Style.FontSize._2, Style.FontSize._2).setJustification(EscPosConst.Justification.Center).setFontName(Style.FontName.Font_B).setBold(true);
+        Style normalLeft = ticketStyle(options).setJustification(EscPosConst.Justification.Left_Default).setBold(false);
+        Style boldLeft = ticketStyle(options).setJustification(EscPosConst.Justification.Left_Default).setBold(true);
+        Style center = ticketStyle(options).setJustification(EscPosConst.Justification.Center).setBold(false);
+        Style small = ticketStyle(options).setJustification(EscPosConst.Justification.Left_Default).setBold(false);
+        // Style boldCenter = ticketStyle(options).setJustification(EscPosConst.Justification.Center).setBold(true);
         String empresa = asString(data.get("Empresa"), "");
         if (!empresa.isBlank()) {
-            escpos.writeLF(title, empresa);
+            writeCompanyHeader(escpos, empresa, width, payload);
         }
         String razon = asString(data.get("Razon_Social"), "");
         if (!razon.isBlank()) {
-            escpos.writeLF(center, razon);
+            writeWrapped(escpos, center, razon, width);
         }
         String rfc = asString(data.get("Rfc"), "");
         if (!rfc.isBlank()) {
-            escpos.writeLF(center, "R.F.C: " + rfc);
+            writeWrapped(escpos, center, "R.F.C: " + rfc, width);
         }
         String direccion = asString(data.get("Direccion"), "");
         if (!direccion.isBlank()) {
@@ -1016,19 +1046,19 @@ finally {
         }
         String telefono = asString(data.get("Telefono"), "");
         if (!telefono.isBlank()) {
-            escpos.writeLF(center, "Telefono: " + telefono);
+            writeWrapped(escpos, center, "Telefono: " + telefono, width);
         }
         String regimen = asString(data.get("Reg_Fiscal"), "");
         if (!regimen.isBlank()) {
             writeWrapped(escpos, center, "Regimen Fiscal: " + regimen, width);
         }
-        escpos.writeLF(normalLeft, divider);
+        writeWrapped(escpos, normalLeft, divider, width);
 
         writeWrapped(escpos, normalLeft, "Cliente: " + asString(cliente.get("Nombre"), ""), width);
         writeWrapped(escpos, normalLeft, "RFC: " + asString(cliente.get("Rfc"), ""), width);
         writeWrapped(escpos, normalLeft, "Regimen Fiscal: " + asString(cliente.get("Reg_Fiscal"), ""), width);
         writeWrapped(escpos, normalLeft, "CP: " + asString(cliente.get("CP"), ""), width);
-        escpos.writeLF(normalLeft, divider);
+        writeWrapped(escpos, normalLeft, divider, width);
 
         writeWrapped(escpos, normalLeft, "Serie/Folio: " + asString(venta.get("Serie"), "") + "-" + asString(venta.get("Folio"), ""), width);
         writeWrapped(escpos, normalLeft, "UUID: " + asString(venta.get("Folio Fiscal"), ""), width);
@@ -1039,36 +1069,36 @@ finally {
         writeWrapped(escpos, normalLeft, "Forma de Pago: " + asString(venta.get("Forma de Pago"), ""), width);
         writeWrapped(escpos, normalLeft, "Uso CFDI: " + asString(venta.get("Uso CFDI"), ""), width);
         escpos.feed(1);
-        escpos.writeLF(normalLeft, "Cant, / Unidad / P. Unit / Importe");
-        escpos.writeLF(normalLeft, divider);
+        writeWrapped(escpos, normalLeft, "Cant, / Unidad / P. Unit / Importe", width);
+        writeWrapped(escpos, normalLeft, divider, width);
         for (Object obj : productos) {
             Map<String, Object> p = asMap(obj);
             String cantidad = asString(p.get("Cantidad"), "1");
             String nombre = asString(p.get("Nombre"), "");
             String clave = asString(p.get("Clave"), "");
             String importe = asString(p.get("Importe"), "0.00");
-            writeWrapped(escpos, normalLeft, cantidad + " x " + nombre, width);
+            writeProductText(escpos, normalLeft, cantidad + " x " + nombre, width);
             writeWrapped(escpos, normalLeft, "Clave: " + clave, width);
-            escpos.writeLF(normalLeft, rightText(importe, width));
+            writeWrapped(escpos, normalLeft, rightText(importe, width), width);
         }
 
-        escpos.writeLF(normalLeft, divider);
-        escpos.writeLF(normalLeft, twoCol("Subtotal",  asString(venta.get("Subtotal"), "0.00"), width));
-        escpos.writeLF(normalLeft, twoCol("Impuestos",  asString(venta.get("Impuestos"), "0.00"), width));
-        escpos.writeLF(boldLeft, twoCol("Total",  asString(venta.get("Total"), "0.00"), width));
-        escpos.writeLF(normalLeft, divider);
+        writeWrapped(escpos, normalLeft, divider, width);
+        writeWrapped(escpos, normalLeft, twoCol("Subtotal",  asString(venta.get("Subtotal"), "0.00"), width), width);
+        writeWrapped(escpos, normalLeft, twoCol("Impuestos",  asString(venta.get("Impuestos"), "0.00"), width), width);
+        writeWrapped(escpos, boldLeft, twoCol("Total",  asString(venta.get("Total"), "0.00"), width), width);
+        writeWrapped(escpos, normalLeft, divider, width);
         writeWrapped(escpos, normalLeft, asString(venta.get("CantLetra"), ""), width);
-        escpos.writeLF(normalLeft, divider);
-        escpos.writeLF(boldLeft, "Sello Digital del CFDI:");
-        escpos.writeLF(small, asString(venta.get("Sello Digital del CFDI"), ""));
-        escpos.writeLF(boldLeft, "Sello del SAT:");
-        escpos.writeLF(small, asString(venta.get("Sello Digital del SAT"), ""));
-        escpos.writeLF(boldLeft, "Cadena Original del Complemento de Certificación Digital del SAT:");
-        escpos.writeLF(small, asString(venta.get("COCCSAT"), ""));
+        writeWrapped(escpos, normalLeft, divider, width);
+        writeWrapped(escpos, boldLeft, "Sello Digital del CFDI:", width);
+        writeWrapped(escpos, small, asString(venta.get("Sello Digital del CFDI"), ""), width);
+        writeWrapped(escpos, boldLeft, "Sello del SAT:", width);
+        writeWrapped(escpos, small, asString(venta.get("Sello Digital del SAT"), ""), width);
+        writeWrapped(escpos, boldLeft, "Cadena Original del Complemento de Certificación Digital del SAT:", width);
+        writeWrapped(escpos, small, asString(venta.get("COCCSAT"), ""), width);
         escpos.feed(1);
         String qrText = asString(firstPresentValue(venta, "Qr", "QR"), "");
         if (!qrText.isBlank()) {
-            escpos.writeLF(center, "Escanea QR para validar CFDI");
+            writeWrapped(escpos, center, "Escanea QR para validar CFDI", width);
             escpos.feed(1);
             QRCode qrCode = new QRCode()
                 .setJustification(EscPosConst.Justification.Center)
@@ -1076,10 +1106,35 @@ finally {
                 .setErrorCorrectionLevel(options.qrErrorLevel);
             escpos.write(qrCode, qrText.trim());
             escpos.writeLF("");
-            escpos.writeLF(small, "Este documento es una representación impresa de un CFDI 4.0");
+            writeWrapped(escpos, small, "Este documento es una representación impresa de un CFDI 4.0", width);
         }
-        escpos.feed(5).cut(EscPos.CutMode.FULL);
-        escpos.close();
+    }
+
+    private static int ticketFontSize(Map<String, Object> payload) {
+        int size = asInt(payload.get("ticketFontSize"), asInt(payload.get("companyFontSize"), settingsRef.get().companyFontSize));
+        if (size < 1 || size > 3) throw new IllegalArgumentException("Tamano de letra del ticket: 1 a 3.");
+        return size;
+    }
+
+    private static Style ticketStyle(PrintOptions options) {
+        return new Style().setFontName(Style.FontName.Font_A_Default)
+            .setFontSize(options.fontSize == 3 ? Style.FontSize._2 : Style.FontSize._1,
+                options.fontSize >= 2 ? Style.FontSize._2 : Style.FontSize._1);
+    }
+
+    private static void writeCompanyHeader(EscPos escpos, String company, int width, Map<String, Object> payload) throws Exception {
+        if (company.isBlank()) return;
+        Settings config = settingsRef.get();
+        int size = ticketFontSize(payload);
+        int spacing = asInt(payload.get("companySpacing"), config.companySpacing);
+        if (size < 1 || size > 3 || spacing < 0 || spacing > 3)
+            throw new IllegalArgumentException("Tamano de empresa: 1 a 3; espacio: 0 a 3 lineas.");
+        Style style = new Style().setFontName(Style.FontName.Font_A_Default)
+            .setFontSize(size == 3 ? Style.FontSize._2 : Style.FontSize._1,
+                size >= 2 ? Style.FontSize._2 : Style.FontSize._1)
+            .setJustification(EscPosConst.Justification.Center).setBold(true);
+        writeWrapped(escpos, style, company, width);
+        if (spacing > 0) escpos.feed(spacing);
     }
 
     private static void writeWrapped(EscPos escpos, Style style, String text, int width) throws Exception {
@@ -1117,6 +1172,8 @@ finally {
         options.drawer = asBoolean(payload.get("drawer"), false);
         options.feed = asInt(payload.get("feed"), 3);
         options.ticketWidth = parseTicketWidth(payload);
+        options.fontSize = ticketFontSize(payload);
+        if (options.fontSize == 3) options.ticketWidth = Math.max(12, options.ticketWidth / 2);
         options.designVersion = parseDesignVersion(payload);
         options.qrModuleSize = clamp(asInt(payload.get("qrSize"), 4), 2, 10);
         options.qrErrorLevel = parseQrErrorLevel(asString(payload.get("qrErrorLevel"), "L"));
@@ -1167,11 +1224,16 @@ finally {
     }
 
     private static int parseTicketWidth(Map<String, Object> payload) {
-        int width = asInt(payload.get("ticketWidth"), 42);
+        Settings settings = settingsRef.get();
+        int paper = asInt(payload.get("paperWidthMm"), settings.paperWidthMm);
+        if (paper != 58 && paper != 80) throw new IllegalArgumentException("paperWidthMm debe ser 58 u 80.");
+        int fallback = payload.containsKey("paperWidthMm") && paper != settings.paperWidthMm ? (paper == 58 ? 32 : 42) : settings.charactersPerLine;
+        int width = asInt(payload.get("charactersPerLine"), asInt(payload.get("ticketWidth"), fallback));
         if (width == 32 || width == 42 || width == 48) {
             return width;
         }
-        return clamp(width, 24, 72);
+        if (width < 24 || width > 72) throw new IllegalArgumentException("charactersPerLine debe estar entre 24 y 72.");
+        return width;
     }
 
     private static String parseDesignVersion(Map<String, Object> payload) {
@@ -1256,7 +1318,7 @@ finally {
             if (nombre.isBlank()) {
                 nombre = clave;
             }
-            appendWrapped(lines, cantidad + " x " + nombre, width);
+            appendProductText(lines, cantidad + " x " + nombre, width);
             if (!clave.isBlank() && !clave.equals(nombre)) {
                 appendWrapped(lines, "Clave: " + clave, width);
             }
@@ -1344,7 +1406,7 @@ finally {
             String clave = asString(p.get("Clave"), "");
             String importe = asString(p.get("Importe"), "0.00");
 
-            appendWrapped(lines, cantidad + " x " + nombre, width);
+            appendProductText(lines, cantidad + " x " + nombre, width);
             appendWrapped(lines, "Clave: " + clave, width);
             lines.add(rightText("$ " + importe, width));
         }
@@ -1383,6 +1445,7 @@ finally {
     }
 
     static class PrintOptions {
+        int fontSize;
         String ticketType;
         String align;
         boolean bold;
@@ -1412,6 +1475,22 @@ finally {
             return out;
         }
         return new LinkedHashMap<>();
+    }
+
+    private static void appendProductText(List<String> lines, String text, int width) {
+        List<String> wrapped = new ArrayList<>();
+        appendWrapped(wrapped, text, width);
+        if (wrapped.size() > 2) {
+            String second = wrapped.get(1);
+            wrapped.set(1, second.substring(0, Math.min(second.length(), width - 3)).stripTrailing() + "...");
+        }
+        lines.addAll(wrapped.subList(0, Math.min(2, wrapped.size())));
+    }
+
+    private static void writeProductText(EscPos escpos, Style style, String text, int width) throws Exception {
+        List<String> lines = new ArrayList<>();
+        appendProductText(lines, text, width);
+        for (String line : lines) escpos.writeLF(style, line);
     }
 
     private static void appendWrapped(List<String> lines, String text, int width) {
@@ -1543,6 +1622,146 @@ finally {
         return false;
     }
 
+    private static BufferedImage decodeLogo(byte[] bytes) throws IOException {
+        if (bytes.length > 2 * 1024 * 1024) throw new IllegalArgumentException("Logotipo demasiado grande (maximo 2 MB).");
+        try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            var readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IllegalArgumentException("Usa una imagen PNG o JPEG.");
+            ImageReader reader = readers.next();
+            try {
+                String format = reader.getFormatName();
+                if (!format.equalsIgnoreCase("png") && !format.equalsIgnoreCase("jpeg")) throw new IllegalArgumentException("Usa PNG o JPEG.");
+                reader.setInput(input);
+                int w = reader.getWidth(0), h = reader.getHeight(0);
+                if (w < 1 || h < 1 || w > 4096 || h > 4096 || (long) w * h > 8_000_000) throw new IllegalArgumentException("Imagen demasiado grande; maximo 4096 px y 8 megapixeles.");
+                return reader.read(0);
+            } finally { reader.dispose(); }
+        }
+    }
+
+    private static byte[] logoRaster(byte[] bytes, int maxWidth) throws IOException {
+        BufferedImage original = decodeLogo(bytes);
+        double scale = Math.min(1.0, Math.min((double) maxWidth / original.getWidth(), 512.0 / original.getHeight()));
+        int width = Math.max(1, (int) (original.getWidth() * scale));
+        int height = Math.max(1, (int) (original.getHeight() * scale));
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        var graphics = image.createGraphics();
+        graphics.setColor(java.awt.Color.WHITE);
+        graphics.fillRect(0, 0, width, height);
+        graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        graphics.drawImage(original, 0, 0, width, height, null);
+        graphics.dispose();
+        int rowBytes = (width + 7) / 8;
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(new byte[] {27, 97, 1, 29, 118, 48, 0, (byte) rowBytes, (byte) (rowBytes >> 8), (byte) height, (byte) (height >> 8)});
+        for (int y = 0; y < height; y++) {
+            for (int b = 0; b < rowBytes; b++) {
+                int value = 0;
+                for (int bit = 0; bit < 8; bit++) {
+                    int x = b * 8 + bit;
+                    if (x < width) {
+                        int rgb = image.getRGB(x, y);
+                        int luminance = (((rgb >> 16) & 255) * 299 + ((rgb >> 8) & 255) * 587 + (rgb & 255) * 114) / 1000;
+                        if (luminance < 160) value |= 128 >> bit;
+                    }
+                }
+                out.write(value);
+            }
+        }
+        out.write(new byte[] {10, 27, 97, 0});
+        return out.toByteArray();
+    }
+
+    static class TicketConfigHandler implements HttpHandler {
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
+            try {
+                if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    Map<String, Object> payload = asMap(Json.parse(readBody(exchange)));
+                    Settings current = settingsRef.get();
+                    int paper = asInt(payload.get("paperWidthMm"), current.paperWidthMm);
+                    if (paper != 58 && paper != 80) throw new IllegalArgumentException("Papel: 58 u 80 mm.");
+                    int chars = asInt(payload.get("charactersPerLine"), paper == current.paperWidthMm ? current.charactersPerLine : paper == 58 ? 32 : 42);
+                    int dots = asInt(payload.get("printableWidthDots"), paper == current.paperWidthMm ? current.printableWidthDots : paper == 58 ? 384 : 576);
+                    int companySize = ticketFontSize(payload);
+                    int companySpacing = asInt(payload.get("companySpacing"), current.companySpacing);
+                    if (companySize < 1 || companySize > 3 || companySpacing < 0 || companySpacing > 3)
+                        throw new IllegalArgumentException("Tamano de empresa: 1 a 3; espacio: 0 a 3 lineas.");
+                    if (chars < 24 || chars > 72) throw new IllegalArgumentException("Caracteres por linea: 24 a 72.");
+                    if (dots < 128 || dots > (paper == 58 ? 384 : 576)) throw new IllegalArgumentException("Ancho imprimible fuera del rango para este papel.");
+                    synchronized (current) {
+                        int oldPaper = current.paperWidthMm, oldChars = current.charactersPerLine, oldDots = current.printableWidthDots;
+                        boolean oldLogo = current.printLogo;
+                        int oldCompanySize = current.companyFontSize, oldCompanySpacing = current.companySpacing;
+                        current.paperWidthMm = paper;
+                        current.charactersPerLine = chars;
+                        current.printableWidthDots = dots;
+                        current.printLogo = asBoolean(payload.get("printLogo"), current.printLogo);
+                        current.companyFontSize = companySize;
+                        current.companySpacing = companySpacing;
+                        try { saveSettings(current); }
+                        catch (RuntimeException e) {
+                            current.paperWidthMm = oldPaper; current.charactersPerLine = oldChars;
+                            current.printableWidthDots = oldDots; current.printLogo = oldLogo;
+                            current.companyFontSize = oldCompanySize; current.companySpacing = oldCompanySpacing; throw e;
+                        }
+                    }
+                } else if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    sendJson(exchange, 405, Map.of("ok", false, "error", "Metodo no permitido")); return;
+                }
+                Settings config = settingsRef.get();
+                sendJson(exchange, 200, Map.of("ok", true, "paperWidthMm", config.paperWidthMm,
+                    "charactersPerLine", config.charactersPerLine, "printableWidthDots", config.printableWidthDots,
+                    "printLogo", config.printLogo, "hasLogo", Files.exists(APP_DATA_DIR.resolve("logo.png")),
+                    "ticketFontSize", config.companyFontSize, "companyFontSize", config.companyFontSize, "companySpacing", config.companySpacing));
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, Map.of("ok", false, "error", e.getMessage()));
+            } catch (Exception e) {
+                e.printStackTrace(System.err);
+                sendJson(exchange, 500, Map.of("ok", false, "error", "No se pudo guardar la configuracion. Revisa los permisos de " + SETTINGS_FILE));
+            }
+        }
+    }
+
+    static class LogoHandler implements HttpHandler {
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleOptions(exchange)) return;
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendJson(exchange, 405, Map.of("ok", false, "error", "Metodo no permitido")); return;
+            }
+            try {
+                byte[] bytes = exchange.getRequestBody().readNBytes(2 * 1024 * 1024 + 1);
+                if (bytes.length == 0) {
+                    Files.deleteIfExists(APP_DATA_DIR.resolve("logo.png"));
+                } else {
+                    BufferedImage image = decodeLogo(bytes);
+                    double scale = Math.min(1.0, Math.min(576.0 / image.getWidth(), 512.0 / image.getHeight()));
+                    if (scale < 1.0) {
+                        BufferedImage resized = new BufferedImage(Math.max(1, (int) (image.getWidth() * scale)),
+                            Math.max(1, (int) (image.getHeight() * scale)), BufferedImage.TYPE_INT_ARGB);
+                        var graphics = resized.createGraphics();
+                        graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                            java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+                        graphics.drawImage(image, 0, 0, resized.getWidth(), resized.getHeight(), null);
+                        graphics.dispose();
+                        image = resized;
+                    }
+                    ensureAppDataDir();
+                    Path temp = Files.createTempFile(APP_DATA_DIR, "logo-", ".png");
+                    try {
+                        ImageIO.write(image, "png", temp.toFile());
+                        Files.move(temp, APP_DATA_DIR.resolve("logo.png"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    } finally { Files.deleteIfExists(temp); }
+                }
+                sendJson(exchange, 200, Map.of("ok", true));
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, Map.of("ok", false, "error", e.getMessage()));
+            } catch (Exception e) {
+                sendJson(exchange, 500, Map.of("ok", false, "error", "No se pudo guardar el logotipo."));
+            }
+        }
+    }
+
     static class RootHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -1550,34 +1769,11 @@ finally {
                 sendJson(exchange, 405, Map.of("ok", false, "error", "Metodo no permitido"));
                 return;
             }
-            String html =
-                "<!doctype html><html><head><meta charset='utf-8'><title>Ticket Printer</title>" +
-                "<style>body{font-family:Segoe UI,Arial,sans-serif;margin:24px;max-width:760px}section{border:1px solid #ddd;padding:16px;margin:0 0 16px}label{display:block;margin:10px 0 4px}select,input{min-width:360px;padding:6px}button{margin-top:12px;padding:7px 12px}</style>" +
-                "</head><body>" +
-                "<h2>Ticket Printer</h2>" +
-                "<section><h3>Tickets ESC/POS</h3>" +
-                "<label>Impresora de tickets</label><select id='printers'></select> <button onclick='saveTicketPrinter()'>Guardar</button>" +
-                "<p id='selected'></p></section>" +
-                "<section><h3>Etiquetas Brother</h3>" +
-                "<label>Impresora de etiquetas</label><select id='labelPrinter'></select>" +
-                "<label>Carpeta de plantillas .lbx</label><input id='labelTemplateDir' placeholder='C:\\\\Etiquetas'>" +
-                "<p id='labelSelected'></p><p id='templates'></p><button onclick='saveLabelConfig()'>Guardar etiquetas</button></section>" +
-                "<script>" +
-                "let printers=[];" +
-                "function fillSelect(id,selected){const s=document.getElementById(id);s.innerHTML='';printers.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;if(p===selected){o.selected=true;}s.appendChild(o);});}" +
-                "async function load(){const r=await fetch('/printers');const j=await r.json();printers=j.printers||[];fillSelect('printers',j.selected);" +
-                "document.getElementById('selected').textContent='Actual: '+(j.selected||'Sin seleccionar');" +
-                "const lr=await fetch('/label/brother/config');const lj=await lr.json();fillSelect('labelPrinter',lj.printerName);" +
-                "document.getElementById('labelTemplateDir').value=lj.templateDir||'';" +
-                "document.getElementById('labelSelected').textContent='Actual: '+(lj.printerName||'Sin seleccionar');" +
-                "document.getElementById('templates').textContent='Plantillas: '+((lj.templates||[]).join(', ')||'sin .lbx detectadas');}" +
-                "async function saveTicketPrinter(){const name=document.getElementById('printers').value;" +
-                "await fetch('/printer/select',{method:'POST',headers:{'Content-Type':'application/json'}," +
-                "body:JSON.stringify({name})});await load();alert('Impresora guardada');}" +
-                "async function saveLabelConfig(){const printerName=document.getElementById('labelPrinter').value;const templateDir=document.getElementById('labelTemplateDir').value;" +
-                "const r=await fetch('/label/brother/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({printerName,templateDir})});const j=await r.json();await load();alert(j.ok?'Configuracion de etiquetas guardada':j.error);}" +
-                "load();" +
-                "</script></body></html>";
+            String html;
+            try (InputStream resource = Main.class.getResourceAsStream("/web/index.html")) {
+                html = resource == null ? Files.readString(Paths.get("web/index.html"), StandardCharsets.UTF_8)
+                    : new String(resource.readAllBytes(), StandardCharsets.UTF_8);
+            }
             sendHtml(exchange, html);
         }
     }

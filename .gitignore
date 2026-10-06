@@ -1,0 +1,4 @@
+.verification/
+.ticket-printer.pid
+.ticket-printer.*.log
+portable/
